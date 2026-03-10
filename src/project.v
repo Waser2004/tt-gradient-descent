@@ -16,12 +16,18 @@ module tt_um_example (
     input  wire       rst_n     // reset_n - low to reset
 );
 
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out  = ui_in + uio_in;  // Example: ou_out is the sum of ui_in and uio_in
-  assign uio_out = 0;
-  assign uio_oe  = 0;
+  // linear model weigth and bias
+  reg signed [3:0] w = 4'b0001;
+  reg signed [7:0] b = 4'b0001;
 
-  // List all unused inputs to prevent warnings
-  wire _unused = &{ena, clk, rst_n, 1'b0};
+  // forward pass
+  reg signed [3:0] x    = ui_in[3:0];
+  reg signed [7:0] mult = w * x;
+  reg signed [7:0] sum  = mult + b;
+
+  // outputs
+  assign uo_out  = sum;
+  assign uio_out = sum; // unused output
+  assign uio_oe  = sum; // unused output
 
 endmodule
