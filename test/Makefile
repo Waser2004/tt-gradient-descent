@@ -8,7 +8,7 @@ TOPLEVEL_LANG ?= verilog
 empty :=
 space := $(empty) $(empty)
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v
+PROJECT_SOURCES = project.v data_loader.v
 
 ifneq ($(GATES),yes)
 
