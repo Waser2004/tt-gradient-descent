@@ -1,0 +1,9 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: test/Dockerfile
+    working_dir: /work/test
+    volumes:
+      - .:/work
+    command: ["make", "-B"]

@@ -5,6 +5,8 @@
 SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
+empty :=
+space := $(empty) $(empty)
 SRC_DIR = $(PWD)/../src
 PROJECT_SOURCES = project.v
 
@@ -17,7 +19,7 @@ VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
 else
 
 # Gate level simulation:
-SIM_BUILD				= sim_build/gl
+SIM_BUILD		= sim_build/gl
 COMPILE_ARGS    += -DGL_TEST
 COMPILE_ARGS    += -DFUNCTIONAL
 COMPILE_ARGS    += -DSIM
@@ -40,4 +42,5 @@ TOPLEVEL = tb
 COCOTB_TEST_MODULES = test
 
 # include cocotb's make rules to take care of the simulator setup
-include $(shell cocotb-config --makefiles)/Makefile.sim
+COCOTB_MAKEFILES := $(shell cocotb-config --makefiles)
+include $(subst $(space),\ ,$(COCOTB_MAKEFILES))/Makefile.sim

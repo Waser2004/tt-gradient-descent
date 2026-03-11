@@ -16,6 +16,17 @@ To run the RTL simulation:
 make -B
 ```
 
+## Run with Docker Compose
+
+From the project root, run:
+
+```sh
+docker compose run --rm test
+```
+
+This builds the image from `test/Dockerfile`, mounts your project into the container,
+and runs `make -B` inside `test/`.
+
 To run gatelevel simulation, first harden your project and copy `../runs/wokwi/results/final/verilog/gl/{your_module_name}.v` to `gate_level_netlist.v`.
 
 Then run:

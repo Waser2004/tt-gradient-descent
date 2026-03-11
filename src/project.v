@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tt_um_example (
+module tt_um_linear_model (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
     input  wire [7:0] uio_in,   // IOs: Input path
@@ -21,9 +21,9 @@ module tt_um_example (
   reg signed [7:0] b = 4'b0001;
 
   // forward pass
-  reg signed [3:0] x    = ui_in[3:0];
-  reg signed [7:0] mult = w * x;
-  reg signed [7:0] sum  = mult + b;
+  wire signed [3:0] x    = ui_in[3:0];
+  wire signed [7:0] mult = w * x;
+  wire signed [7:0] sum  = mult + b;
 
   // outputs
   assign uo_out  = sum;
