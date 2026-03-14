@@ -83,6 +83,8 @@ module tt_um_linear_model (
     );
 
     inference inference (
+        .clk(clk),
+        .rst_n(rst_n),
         .enable(state == INFERENCE),
         .ui_in(ui_in),
         .w(w),

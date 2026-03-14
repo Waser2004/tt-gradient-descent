@@ -68,7 +68,7 @@ module trainer (
                 train_step <= train_step + 1;
 
                 // after 64 training steps, set train_done or loss is below threshold of  0.01
-                if (train_step == 6'd63 || loss < 16'h0010) begin
+                if (train_step == 7'd63 || loss < 16'h0010) begin
                     train_done <= 1;
                 end
 

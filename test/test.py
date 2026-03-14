@@ -21,8 +21,11 @@ def s(value: int, bits: int) -> int:
 
 def inference_reference(w: int, b: int, x_raw: int) -> int:
     x = x_raw & 0x3F
-    pred_fp = s(((s(w, 11) * x) >> 4) + s(b, 11), 12)
-    pred_int = s(pred_fp >> 4, 8)
+    mul_fp = s(s(w, 11) * x, 17)
+    b_ext = s(s(b, 11), 17)
+    pred_sum = s((mul_fp >> 4) + b_ext, 17)
+    pred_fp = pred_sum & 0xFFF          # exact [11:0] slice semantics
+    pred_int = s((pred_fp >> 4) & 0xFF, 8)
     return pred_int & 0xFF
 
 
@@ -158,7 +161,9 @@ async def test_full_system_load_train_infer(dut):
     # Verify inference outputs for several inputs.
     for x_in in (0, 3, 7, 12, 31, 63):
         dut.ui_in.value = x_in & 0x3F
-        await ClockCycles(dut.clk, 1)
+        # Registered inference datapath; allow one full cycle for update and
+        # sample on the next edge to avoid race with NBA updates.
+        await ClockCycles(dut.clk, 2)
         got = dut.uo_out.value.to_unsigned()
         expected = inference_reference(actual_w, actual_b, x_in)
         assert got == expected, f"Inference mismatch for x={x_in}: got {got}, expected {expected}"
