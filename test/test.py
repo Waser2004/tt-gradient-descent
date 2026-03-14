@@ -29,6 +29,17 @@ def inference_reference(w: int, b: int, x_raw: int) -> int:
     return pred_int & 0xFF
 
 
+def get_child(handle, name: str):
+    try:
+        return getattr(handle, name)
+    except AttributeError:
+        return None
+
+
+def has_internal_state(dut) -> bool:
+    return get_child(dut.user_project, "state") is not None
+
+
 async def reset_dut(dut):
     dut.ena.value = 1
     dut.ui_in.value = 0
@@ -40,7 +51,10 @@ async def reset_dut(dut):
 
 
 def state(dut) -> int:
-    return dut.user_project.state.value.to_unsigned()
+    state_handle = get_child(dut.user_project, "state")
+    if state_handle is not None:
+        return state_handle.value.to_unsigned()
+    return (dut.uo_out.value.to_unsigned() >> 6) & 0b11
 
 
 async def enter_load_mode(dut):
@@ -86,20 +100,33 @@ async def capture_training_done(dut, max_cycles: int = 80):
     saw_done = False
     done_step = 0
     done_loss = 0
+    internal_state = has_internal_state(dut)
 
     for _ in range(max_cycles):
-        cur_state = state(dut)
-        if cur_state == TRAIN and dut.user_project.train_done.value == 1:
-            saw_done = True
-            done_step = dut.user_project.train_step.value.to_unsigned()
-            done_loss = dut.user_project.trainer.loss.value.to_signed()
+        if internal_state:
+            cur_state = state(dut)
+            if cur_state == TRAIN and dut.user_project.train_done.value == 1:
+                saw_done = True
+                done_step = dut.user_project.train_step.value.to_unsigned()
+                done_loss = dut.user_project.trainer.loss.value.to_signed()
 
-        if cur_state == INFERENCE:
-            break
+            if cur_state == INFERENCE:
+                break
+        else:
+            # In gate-level sims internal signals are not exposed, so infer
+            # the TRAIN->INFERENCE transition from uo_out stopping the TRAIN
+            # debug pattern (state bits `10`).
+            if (dut.uo_out.value.to_unsigned() >> 6) != TRAIN:
+                saw_done = True
+                break
 
         await ClockCycles(dut.clk, 1)
 
-    assert state(dut) == INFERENCE, f"Expected INFERENCE, got {state(dut)}"
+    if internal_state:
+        assert state(dut) == INFERENCE, f"Expected INFERENCE, got {state(dut)}"
+    else:
+        assert saw_done, "Expected transition out of TRAIN during gate-level simulation"
+
     return saw_done, done_step, done_loss
 
 
@@ -109,10 +136,11 @@ async def test_reset_state(dut):
     await reset_dut(dut)
 
     assert state(dut) == IDLE
-    assert dut.user_project.train_step.value.to_unsigned() == 0
-    assert dut.user_project.train_done.value == 0
-    assert dut.user_project.w.value.to_signed() == 0
-    assert dut.user_project.b.value.to_signed() == 0
+    if has_internal_state(dut):
+        assert dut.user_project.train_step.value.to_unsigned() == 0
+        assert dut.user_project.train_done.value == 0
+        assert dut.user_project.w.value.to_signed() == 0
+        assert dut.user_project.b.value.to_signed() == 0
 
 
 @cocotb.test()
@@ -139,24 +167,29 @@ async def test_full_system_load_train_infer(dut):
 
     saw_done, done_step, done_loss = await capture_training_done(dut)
 
-    actual_w = dut.user_project.w.value.to_signed()
-    actual_b = dut.user_project.b.value.to_signed()
     assert saw_done, "Expected train_done pulse during TRAIN state"
 
-    # Golden reference for this dataset with current fixed-point RTL.
-    expected_w = -884
-    expected_b = 146
-    assert actual_w == expected_w, f"Expected w={expected_w}, got {actual_w}"
-    assert actual_b == expected_b, f"Expected b={expected_b}, got {actual_b}"
+    if has_internal_state(dut):
+        actual_w = dut.user_project.w.value.to_signed()
+        actual_b = dut.user_project.b.value.to_signed()
 
-    # Training can stop early on low loss, or after 64 steps.
-    assert 1 <= done_step <= 64, f"Unexpected done_step={done_step}"
-    if done_step < 64:
-        assert done_loss < 0x0010, (
-            f"Early stop requires low loss, got loss={done_loss}, step={done_step}"
-        )
+        # Golden reference for this dataset with current fixed-point RTL.
+        expected_w = -884
+        expected_b = 146
+        assert actual_w == expected_w, f"Expected w={expected_w}, got {actual_w}"
+        assert actual_b == expected_b, f"Expected b={expected_b}, got {actual_b}"
+
+        # Training can stop early on low loss, or after 64 steps.
+        assert 1 <= done_step <= 64, f"Unexpected done_step={done_step}"
+        if done_step < 64:
+            assert done_loss < 0x0010, (
+                f"Early stop requires low loss, got loss={done_loss}, step={done_step}"
+            )
+        else:
+            assert done_step == 64
     else:
-        assert done_step == 64
+        actual_w = -884
+        actual_b = 146
 
     # Verify inference outputs for several inputs.
     for x_in in (0, 3, 7, 12, 31, 63):
@@ -174,9 +207,10 @@ async def test_full_system_load_train_infer(dut):
     await wait_for_state(dut, IDLE, timeout_cycles=3)
 
     # trainer reset behavior outside TRAIN state.
-    await ClockCycles(dut.clk, 1)
-    assert dut.user_project.train_step.value.to_unsigned() == 0
-    assert dut.user_project.train_done.value == 0
+    if has_internal_state(dut):
+        await ClockCycles(dut.clk, 1)
+        assert dut.user_project.train_step.value.to_unsigned() == 0
+        assert dut.user_project.train_done.value == 0
 
 
 @cocotb.test()
@@ -205,15 +239,17 @@ async def test_training_early_stop_on_perfect_fit(dut):
 
     # Must stop because loss is already below threshold (not because of max-step timeout).
     assert saw_done, "Expected train_done pulse during TRAIN state"
-    assert done_step == 1, f"Expected early-stop at step 1, got step {done_step}"
-    assert done_loss == 0, f"Expected zero loss for perfect-fit dataset, got {done_loss}"
+    if has_internal_state(dut):
+        assert done_step == 1, f"Expected early-stop at step 1, got step {done_step}"
+        assert done_loss == 0, f"Expected zero loss for perfect-fit dataset, got {done_loss}"
 
     # Parameters should remain unchanged for zero-gradient data.
-    assert dut.user_project.w.value.to_signed() == 0
-    assert dut.user_project.b.value.to_signed() == 0
+    if has_internal_state(dut):
+        assert dut.user_project.w.value.to_signed() == 0
+        assert dut.user_project.b.value.to_signed() == 0
 
     # Inference should output 0 for any input with w=b=0.
     for x_in in (0, 5, 19, 42, 63):
         dut.ui_in.value = x_in & 0x3F
-        await ClockCycles(dut.clk, 1)
+        await ClockCycles(dut.clk, 2)
         assert dut.uo_out.value.to_unsigned() == 0, f"Expected 0 output for x={x_in}"

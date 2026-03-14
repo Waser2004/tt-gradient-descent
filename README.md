@@ -1,42 +1,79 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+# Gradient Descent on Tiny Tapeout
 
-- [Read the documentation for project](docs/info.md)
+This project implements a tiny hardware learning system on Tiny Tapeout.
+It can:
 
-## What is Tiny Tapeout?
+- load 5 training samples `(x, y)`
+- train a linear model on-chip with gradient descent
+- use the trained model to predict outputs for new inputs
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+The model is:
 
-To learn more and get started, visit https://tinytapeout.com.
+`y = w * x + b`
 
-## Set up your Verilog project
+The chip stores the training samples internally, updates `w` and `b` during the
+training phase, and then enters inference mode automatically.
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+## Operation
 
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
+The design moves through three phases:
 
-## Enable GitHub actions to build the results page
+1. `LOAD_DATA`
+   Five training pairs are loaded through the `ui` pins.
+2. `TRAIN`
+   The internal trainer runs gradient descent for up to 64 steps, or stops early
+   if the loss is already low enough.
+3. `INFERENCE`
+   New input values are applied and the predicted output is returned on `uo[7:0]`.
 
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
+Pin usage:
 
-## Resources
+- `ui[5:0]`: 6-bit data input
+- `ui[6]`: toggle used while loading `(x, y)` samples
+- `ui[7]`: enter loading mode, and later return from inference to idle
+- `uo[7:0]`: debug output during loading/training, prediction during inference
 
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
+## Example use
 
-## What next?
+A simple dataset you can load is:
 
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+- `(2, 5)`
+- `(4, 9)`
+- `(6, 13)`
+- `(8, 17)`
+- `(10, 21)`
+
+This corresponds approximately to:
+
+`y = 2x + 1`
+
+After training, trying values such as `x = 3`, `x = 7`, or `x = 12` should give
+outputs close to `7`, `15`, and `25`.
+
+## Testing the chip
+
+For the full hardware procedure, see [docs/info.md](/D:/OneDrive%20-%20Venusnet/Dokumente/2.%20ETHz%C3%BCrich/FS26/tt-gradient-descent/docs/info.md).
+
+In short:
+
+1. Reset the chip.
+2. Raise `ui[7]` for one cycle to enter load mode.
+3. Load 5 `(x, y)` pairs using `ui[5:0]` and toggle `ui[6]`.
+4. Wait for the chip to finish training and enter inference mode.
+5. Apply new values on `ui[5:0]` and read the prediction on `uo[7:0]`.
+
+## Local verification
+
+The cocotb testbench covers:
+
+- reset behavior
+- full load -> train -> inference flow
+- early-stop training behavior
+
+Run it locally with:
+
+```sh
+docker compose run --rm test
+```

@@ -1,54 +1,117 @@
-<!---
-
-This file is used to generate your project datasheet. Please fill in the information below and delete any unused
-sections.
-
-You can also include images in this folder and reference them in the markdown. Each image must be less than
-512 kb in size, and the combined size of all images must be less than 1 MB.
--->
-
 ## How it works
 
-This project implements a tiny **linear regression model in hardware**.
+This project is a small hardware learning system for a linear model.
+It stores 5 training samples on-chip, trains a model with gradient descent, and
+then uses the trained model to make predictions for new input values.
 
-The model computes a prediction using the equation:
+The design has three operating phases:
 
-ŷ = w · x + b
+1. `LOAD_DATA`
+   Load 5 training pairs `(x, y)` into the chip.
+2. `TRAIN`
+   The chip updates the internal weight `w` and bias `b` with gradient descent.
+3. `INFERENCE`
+   The chip uses the trained `w` and `b` to compute an output for a new input `x`.
 
-Where:
-- `x` is the input value provided on `ui_in`
-- `w` is the model weight stored in a register
-- `b` is the bias stored in a register
-- `ŷ` is the predicted output
+The model equation is:
 
-The chip trains the parameters `w` and `b` using **gradient descent** on a small dataset stored on-chip.  
-For each training sample the chip:
+`y = w * x + b`
 
-1. Computes the prediction `ŷ = w·x + b`
-2. Calculates the error `e = ŷ − y`
-3. Updates the parameters using gradient descent
+Internally, `w` and `b` are stored in fixed-point format.
+Training runs automatically after the 5th sample is loaded.
+The trainer stops either:
 
-w ← w − η(e·x)  
-b ← b − ηe
+- after 64 training steps, or
+- earlier if the loss becomes small enough.
 
-After training finishes, the chip can compute predictions for new input values.
+Pin usage:
 
-All numbers are represented as **signed two's complement integers**.
+- `ui[5:0]`: 6-bit value input
+- `ui[6]`: load toggle during data entry
+- `ui[7]`: start loading, and later reset back to idle from inference
+- `uo[7:0]`: output
+
+During `LOAD_DATA`, the output is debug information:
+
+- `uo[7:6]`: current state
+- `uo[2:0]`: current write index
+
+State encoding:
+
+- `00` = `IDLE`
+- `01` = `LOAD_DATA`
+- `10` = `TRAIN`
+- `11` = `INFERENCE`
+
+During `INFERENCE`, `uo[7:0]` is the predicted output value.
 
 
 ## How to test
 
-1. Power the Tiny Tapeout board with the design loaded.
+The chip is easiest to test in four stages.
 
-2. Provide an input value `x` on the input pins `ui_in`.
+### 1. Reset
 
-3. The chip computes the prediction using the trained model:
+- Apply clock and power.
+- Hold `rst_n` low, then set it high.
+- Keep `ui[7:0] = 0`.
+- After reset, the chip is in `IDLE`, so the debug output should show state `00`.
 
-   ŷ = w · x + b
+### 2. Load 5 training samples
 
-4. The predicted value `ŷ` is output on `uo_out`.
+To enter load mode:
 
-Try different input values to observe how the output changes according to the learned linear relationship.
+- Set `ui[7] = 1` for one clock cycle.
+- Then set `ui[7] = 0`.
+- The chip should move to `LOAD_DATA` and `uo[7:6]` should become `01`.
+
+To load one sample `(x, y)`:
+
+1. Put `x` on `ui[5:0]` with `ui[6] = 0`.
+2. Toggle `ui[6]` from `0` to `1` for one clock edge.
+   This stores `x`.
+3. Put `y` on `ui[5:0]` while keeping `ui[6] = 1`.
+4. Toggle `ui[6]` from `1` to `0` for one clock edge.
+   This stores `y`.
+
+Repeat that for 5 samples.
+
+Example dataset that works well:
+
+- `(2, 5)`
+- `(4, 9)`
+- `(6, 13)`
+- `(8, 17)`
+- `(10, 21)`
+
+This dataset represents the line:
+
+`y = 2x + 1`
+
+After the 5th sample, the chip automatically leaves `LOAD_DATA` and starts training.
+
+### 3. Wait for training to finish
+
+- During training, the debug output state is `10`.
+- When training is finished, the chip enters `INFERENCE`.
+- In `INFERENCE`, the debug output is replaced by the predicted value.
+
+### 4. Run inference
+
+- Put a new 6-bit input value on `ui[5:0]`.
+- Keep `ui[7] = 0`.
+- Wait at least one clock cycle.
+- Read the predicted value on `uo[7:0]`.
+
+With the example dataset above, the output should approximately follow:
+
+- input `x = 3` -> output near `7`
+- input `x = 7` -> output near `15`
+- input `x = 12` -> output near `25`
+
+To return to `IDLE` and start again:
+
+- Set `ui[7] = 1` for one clock cycle while in `INFERENCE`.
 
 
 ## External hardware
