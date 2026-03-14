@@ -16,11 +16,11 @@ module data_loader (
     output reg  [2:0] write_index,
     output reg signed [5:0] write_x,
     output reg signed [5:0] write_y,
-    output reg        load_done
+    output reg        load_done,
+    output reg  [2:0] data_index
 );
 
     reg prev_toggle;
-    reg [2:0] data_index;
 
     wire rise;
     wire fall;
