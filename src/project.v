@@ -30,15 +30,15 @@ module tt_um_linear_model (
     wire start_load = ui_in[7];
 
     // training data storage
-    reg signed [3:0] train_x [0:4];
-    reg signed [7:0] train_y [0:4];
+    reg signed [5:0] train_x [0:4];
+    reg signed [5:0] train_y [0:4];
 
     // loader signals
     wire write_x_en;
     wire write_y_en;
     wire [2:0] write_index;
-    wire signed [3:0] write_x;
-    wire signed [7:0] write_y;
+    wire signed [5:0] write_x;
+    wire signed [5:0] write_y;
     wire load_done;
 
     data_loader loader (

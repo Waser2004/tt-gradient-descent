@@ -14,8 +14,8 @@ module data_loader (
     output reg        write_x_en,
     output reg        write_y_en,
     output reg  [2:0] write_index,
-    output reg signed [3:0] write_x,
-    output reg signed [7:0] write_y,
+    output reg signed [5:0] write_x,
+    output reg signed [5:0] write_y,
     output reg        load_done
 );
 
@@ -25,8 +25,8 @@ module data_loader (
     wire rise;
     wire fall;
 
-    assign rise = (prev_toggle == 1'b0) && (ui_in[4] == 1'b1);
-    assign fall = (prev_toggle == 1'b1) && (ui_in[4] == 1'b0);
+    assign rise = (prev_toggle == 1'b0) && (ui_in[6] == 1'b1);
+    assign fall = (prev_toggle == 1'b1) && (ui_in[6] == 1'b0);
 
     always @(posedge clk or negedge rst_n) begin
         // reset all signals on reset
@@ -42,7 +42,7 @@ module data_loader (
 
         // main logic
         end else begin
-            prev_toggle <= ui_in[4];
+            prev_toggle <= ui_in[6];
 
             write_x_en <= 0;
             write_y_en <= 0;
@@ -53,14 +53,14 @@ module data_loader (
                 if (rise) begin
                     write_x_en  <= 1;
                     write_index <= data_index;
-                    write_x     <= ui_in[3:0];
+                    write_x     <= ui_in[5:0];
                 end
                 
                 // on falling edge, write y; after 5 pairs of (x,y) are loaded, set load_done
                 if (fall) begin
                     write_y_en  <= 1;
                     write_index <= data_index;
-                    write_y     <= ui_in;
+                    write_y     <= ui_in[5:0];
 
                     if (data_index == 3'd4) begin
                         data_index <= 0;

@@ -37,34 +37,34 @@ def set_bit(value: int, bit: int, bit_value: int) -> int:
 async def load_sample(dut, x: int, y: int):
     """
     Protocol:
-    - rising edge of ui_in[4] stores x = ui_in[3:0]
-    - falling edge of ui_in[4] schedules y write into loader register
+    - rising edge of ui_in[6] stores x = ui_in[3:0]
+    - falling edge of ui_in[6] schedules y write into loader register
     - the top-level memory captures that value one clock later
     """
 
     # Put x on lower nibble, keep start_load high on bit 7, toggle bit low first
     ui_val = 0
     ui_val = set_bit(ui_val, 7, 1)          # keep start_load asserted
-    ui_val = set_bit(ui_val, 4, 0)          # toggle low
+    ui_val = set_bit(ui_val, 6, 0)          # toggle low
     ui_val = (ui_val & 0b11110000) | (x & 0xF)
     dut.ui_in.value = ui_val
     await ClockCycles(dut.clk, 1)
 
-    # Rising edge on bit 4 -> store x
-    ui_val = set_bit(ui_val, 4, 1)
+    # Rising edge on bit 6 -> store x
+    ui_val = set_bit(ui_val, 6, 1)
     dut.ui_in.value = ui_val
     await ClockCycles(dut.clk, 1)
 
-    # Put y on full byte, but keep bit 4 high for now
+    # Put y on full byte, but keep bit 6 high for now
     # Note: this means bit 7 may no longer be "start_load" during the y phase.
     # That is okay because the FSM is already in LOAD_DATA.
     ui_val = y & 0xFF
-    ui_val = set_bit(ui_val, 4, 1)
+    ui_val = set_bit(ui_val, 6, 1)
     dut.ui_in.value = ui_val
     await ClockCycles(dut.clk, 1)
 
-    # Falling edge on bit 4 -> store y
-    ui_val = set_bit(ui_val, 4, 0)
+    # Falling edge on bit 6 -> store y
+    ui_val = set_bit(ui_val, 6, 0)
     dut.ui_in.value = ui_val
     await ClockCycles(dut.clk, 1)
 
@@ -133,8 +133,8 @@ async def test_load_one_sample(dut):
     state = (dut.uo_out.value.to_unsigned() >> 6) & 0b11
     assert state == LOAD_DATA, "FSM did not enter LOAD_DATA"
 
-    # Load one sample: x=3, y=9
-    await load_sample(dut, x=3, y=9)
+    # Load one sample: x=3, y=5
+    await load_sample(dut, x=3, y=5)
 
     # One extra cycle avoids sampling during the write handoff.
     await ClockCycles(dut.clk, 1)
@@ -145,7 +145,7 @@ async def test_load_one_sample(dut):
 
     dut._log.info(f"train_x[0]={train_x0}, train_y[0]={train_y0}")
     assert train_x0 == 3, f"Expected train_x[0] = 3, got {train_x0}"
-    assert train_y0 == 9, f"Expected train_y[0] = 9, got {train_y0}"
+    assert train_y0 == 5, f"Expected train_y[0] = 5, got {train_y0}"
 
     # Read the actual next sample index from the data_loader instance.
     uo_out = dut.uo_out.value.to_unsigned()
@@ -168,11 +168,11 @@ async def test_load_five_samples_and_finish(dut):
     await ClockCycles(dut.clk, 1)
 
     samples = [
-        (1, 1),
-        (2, 2),
-        (3, 3),
-        (4, 4),
-        (5, 5),  # stored as signed in RTL, driven as raw bits
+        (1, 2),
+        (2, 4),
+        (3, 6),
+        (4, 8),
+        (5, 10),  # stored as signed in RTL, driven as raw bits
     ]
 
     for x_raw, y_raw in samples:
@@ -186,7 +186,7 @@ async def test_load_five_samples_and_finish(dut):
     # Check memory contents
     expected_x = [1, 2, 3, 4, 5]
     # ui_in[4] is the loader toggle, so the stored y always has bit 4 = 0.
-    expected_y = [1, 2, 3, 4, 5]
+    expected_y = [2, 4, 6, 8, 10]
 
     for i in range(5):
         actual_x = dut.user_project.train_x[i].value.to_signed()
