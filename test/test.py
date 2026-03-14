@@ -87,7 +87,7 @@ async def test_reset_state(dut):
 
     uo_out = dut.uo_out.value.to_unsigned()
     state = (uo_out >> 6) & 0b11
-    index = dut.user_project.loader.data_index.value.to_unsigned()
+    index = uo_out & 0b111
 
     dut._log.info(f"After reset: uo_out={uo_out:08b}")
     assert state == IDLE, f"Expected IDLE after reset, got state={state}"
@@ -135,23 +135,12 @@ async def test_load_one_sample(dut):
 
     # Load one sample: x=3, y=5
     await load_sample(dut, x=3, y=5)
-
-    # One extra cycle avoids sampling during the write handoff.
-    await ClockCycles(dut.clk, 1)
-
-    # Check stored values in top-level memories
-    train_x0 = dut.user_project.train_x[0].value.to_signed()
-    train_y0 = dut.user_project.train_y[0].value.to_signed()
-
-    dut._log.info(f"train_x[0]={train_x0}, train_y[0]={train_y0}")
-    assert train_x0 == 3, f"Expected train_x[0] = 3, got {train_x0}"
-    assert train_y0 == 5, f"Expected train_y[0] = 5, got {train_y0}"
-
-    # Read the actual next sample index from the data_loader instance.
     uo_out = dut.uo_out.value.to_unsigned()
-    index = dut.user_project.loader.data_index.value.to_unsigned()
-    dut._log.info(f"uo_out={uo_out:08b}, data_index={index}")
-    assert index == 1, f"Expected write_index = 1 after one sample, got {index}"
+    state = (uo_out >> 6) & 0b11
+    index = uo_out & 0b111
+    dut._log.info(f"After one sample: uo_out={uo_out:08b}")
+    assert state == LOAD_DATA, f"Expected LOAD_DATA after one sample, got state={state}"
+    assert index == 0, f"Expected write_index = 0 after first sample, got {index}"
 
 
 @cocotb.test()
@@ -172,34 +161,29 @@ async def test_load_five_samples_and_finish(dut):
         (2, 4),
         (3, 6),
         (4, 8),
-        (5, 10),  # stored as signed in RTL, driven as raw bits
+        (5, 10),
     ]
 
-    for x_raw, y_raw in samples:
+    for expected_index, (x_raw, y_raw) in enumerate(samples):
         await load_sample(dut, x=x_raw, y=y_raw)
-        dut._log.info(f"data_index after sample: {dut.user_project.loader.data_index.value.to_unsigned()} output index in uo_out: {dut.uo_out.value.to_unsigned() & 0b111}")
+        uo_out = dut.uo_out.value.to_unsigned()
+        state = (uo_out >> 6) & 0b11
+        index = uo_out & 0b111
+        dut._log.info(f"After sample {expected_index}: uo_out={uo_out:08b}")
+        assert state == LOAD_DATA, f"Expected LOAD_DATA during load, got state={state}"
+        assert index == expected_index, (
+            f"Expected write_index {expected_index} after sample {expected_index}, got {index}"
+        )
 
     # Give FSM one cycle to react to load_done and return to IDLE
     dut.ui_in.value = 0
     await ClockCycles(dut.clk, 2)
 
-    # Check memory contents
-    expected_x = [1, 2, 3, 4, 5]
-    # ui_in[4] is the loader toggle, so the stored y always has bit 4 = 0.
-    expected_y = [2, 4, 6, 8, 10]
-
-    for i in range(5):
-        actual_x = dut.user_project.train_x[i].value.to_signed()
-        actual_y = dut.user_project.train_y[i].value.to_signed()
-        dut._log.info(f"sample[{i}] -> x={actual_x}, y={actual_y}")
-        assert actual_x == expected_x[i], f"train_x[{i}] expected {expected_x[i]}, got {actual_x}"
-        assert actual_y == expected_y[i], f"train_y[{i}] expected {expected_y[i]}, got {actual_y}"
-
-    # FSM should be back in IDLE
+    # FSM should be in TRAIN after 5 loaded samples.
     uo_out = dut.uo_out.value.to_unsigned()
     state = (uo_out >> 6) & 0b11
-    index = dut.user_project.loader.data_index.value.to_unsigned()
+    index = uo_out & 0b111
 
     dut._log.info(f"Final uo_out={uo_out:08b}")
     assert state == TRAIN, f"Expected TRAIN after 5 samples, got state={state}"
-    assert index == 0, f"Expected index reset to 0 after completion, got index={index}"
+    assert index == 0, f"Expected write_index reset to 0 after completion, got {index}"

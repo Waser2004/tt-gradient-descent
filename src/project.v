@@ -25,13 +25,13 @@ module tt_um_linear_model (
     localparam TRAIN     = 2'b10;
     localparam INFERENCE = 2'b11;
 
-    (* keep = "true" *) reg [1:0] state;
+    reg [1:0] state;
 
     wire start_load = ui_in[7];
 
     // training data storage
-    (* keep = "true" *) reg signed [5:0] train_x [0:4];
-    (* keep = "true" *) reg signed [5:0] train_y [0:4];
+    reg signed [5:0] train_x [0:4];
+    reg signed [5:0] train_y [0:4];
 
     // loader signals
     wire write_x_en;
@@ -40,9 +40,8 @@ module tt_um_linear_model (
     wire signed [5:0] write_x;
     wire signed [5:0] write_y;
     wire load_done;
-    (* keep = "true" *) wire [2:0] data_index;
+    wire [2:0] data_index;
 
-    (* keep_hierarchy = "yes" *)
     data_loader loader (
         .clk(clk),
         .rst_n(rst_n),
@@ -57,6 +56,7 @@ module tt_um_linear_model (
         .load_done(load_done),
         .data_index(data_index)
     );
+
 
     integer i;
 
