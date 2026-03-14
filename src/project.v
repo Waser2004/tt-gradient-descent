@@ -30,15 +30,15 @@ module tt_um_linear_model (
     wire start_load = ui_in[7];
 
     // training data storage
-    reg signed [5:0] train_x [0:4];
-    reg signed [5:0] train_y [0:4];
+    reg [5:0] train_x [0:4];
+    reg [5:0] train_y [0:4];
 
     // loader signals
     wire write_x_en;
     wire write_y_en;
     wire [2:0] write_index;
-    wire signed [5:0] write_x;
-    wire signed [5:0] write_y;
+    wire [5:0] write_x;
+    wire [5:0] write_y;
     wire load_done;
     wire [2:0] data_index;
 
@@ -57,8 +57,33 @@ module tt_um_linear_model (
         .data_index(data_index)
     );
 
+    // trainer signals
+    wire signed [10:0] w; // 7 bits for value + 4 bits for fraction
+    wire signed [10:0] b; // 7 bits for value + 4 bits for fraction
+    wire [6:0] train_step;
+    wire train_done;
+    wire [7:0] inference_out;
 
-    integer i;
+    trainer trainer (
+        .clk(clk),
+        .rst_n(rst_n),
+        .enable(state == TRAIN),
+        .train_x(train_x),
+        .train_y(train_y),
+
+        .w(w),
+        .b(b),
+        .train_step(train_step),
+        .train_done(train_done)
+    );
+
+    inference inference (
+        .enable(state == INFERENCE),
+        .ui_in(ui_in),
+        .w(w),
+        .b(b),
+        .uo_out(inference_out)
+    );
 
     // FSM
     always @(posedge clk or negedge rst_n) begin
@@ -75,6 +100,14 @@ module tt_um_linear_model (
                     if (load_done)
                         state <= TRAIN;
 
+                TRAIN:
+                    if (train_done)
+                        state <= INFERENCE;
+
+                INFERENCE:
+                    if (ui_in[7] == 1'b1)
+                        state <= IDLE;
+
             endcase
         end
     end
@@ -90,9 +123,13 @@ module tt_um_linear_model (
 
     // debug output
     always @(*) begin
-        uo_out[7:6] = state;
-        uo_out[2:0] = write_index;
-        uo_out[5:3] = 3'b000;
+        if (state == INFERENCE) begin
+            uo_out = inference_out;
+        end else begin
+            uo_out[7:6] = state;
+            uo_out[2:0] = write_index;
+            uo_out[5:3] = 3'b000;
+        end
     end
 
     wire _unused = &{ena, uio_in};
