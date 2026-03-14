@@ -63,13 +63,18 @@ module tt_um_linear_model (
     wire [6:0] train_step;
     wire train_done;
     wire [7:0] inference_out;
+    wire [29:0] train_x_flat;
+    wire [29:0] train_y_flat;
+
+    assign train_x_flat = {train_x[4], train_x[3], train_x[2], train_x[1], train_x[0]};
+    assign train_y_flat = {train_y[4], train_y[3], train_y[2], train_y[1], train_y[0]};
 
     trainer trainer (
         .clk(clk),
         .rst_n(rst_n),
         .enable(state == TRAIN),
-        .train_x(train_x),
-        .train_y(train_y),
+        .train_x_flat(train_x_flat),
+        .train_y_flat(train_y_flat),
 
         .w(w),
         .b(b),

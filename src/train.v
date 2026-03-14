@@ -9,8 +9,8 @@ module trainer (
     input  wire                clk,
     input  wire                rst_n,
     input  wire                enable,
-    input  wire unsigned [5:0] train_x [0:4],  // 5 training samples with 6-bit unsigned x values
-    input  wire unsigned [5:0] train_y [0:4],  // 5 training samples with 6-bit unsigned y values
+    input  wire [29:0]         train_x_flat,    // 5x6-bit packed x values
+    input  wire [29:0]         train_y_flat,    // 5x6-bit packed y values
 
     output reg signed [10:0]   w,              // 7 bits for value + 4 bits for fraction
     output reg signed [10:0]   b,              // 7 bits for value + 4 bits for fraction
@@ -46,16 +46,16 @@ module trainer (
 
                 for (int i = 0; i < 5; i++) begin
                     // forward pass: y_pred = w * x + b (fixed-point multiplication and addition)
-                    y_pred = (w * train_x[i]) >>> 4;
+                    y_pred = (w * train_x_flat[i*6 +: 6]) >>> 4;
                     y_pred = y_pred + b;
                     
                     // calculate error
-                    y_target_fp = $signed({1'b0, train_y[i], 4'b0000});
+                    y_target_fp = $signed({1'b0, train_y_flat[i*6 +: 6], 4'b0000});
                     error = y_pred - y_target_fp;
                     loss  = loss + (error * error) >>> 4; // accumulate loss
 
                     // accumulate gradients
-                    w_grad = w_grad + ((error * train_x[i]) >>> 4);
+                    w_grad = w_grad + ((error * train_x_flat[i*6 +: 6]) >>> 4);
                     b_grad = b_grad + error;
                 end
 
